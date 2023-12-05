@@ -48,7 +48,7 @@ def fetch_recent_cves_with_nvdlib():
 
     return cve_list
 
-def generate_ssl_blacklist_html(ssl_blacklist, cve_data):
+def generate_html(ssl_blacklist, cve_data):
     
     html_template = """
     <!DOCTYPE html>
@@ -183,7 +183,7 @@ def generate_ssl_blacklist_html(ssl_blacklist, cve_data):
 
 
 def main():
-    generate_ssl_blacklist_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib())
+    generate_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib())
 
 if __name__ == "__main__":
     main()
