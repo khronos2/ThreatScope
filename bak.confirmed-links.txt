@@ -1,0 +1,7 @@
+Aggressive SSL IP Backlist (Past 7 days?). https://sslbl.abuse.ch/blacklist/sslipblacklist_aggressive.csv
+Blocklist.de;All IP addresses that have attacked one of our customers/servers in the last 48 hours.;IP;https://lists.blocklist.de/lists/all.txt
+Display any CISA Known Exploits within past 7 days. https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv
+Recent malware URLs (past 30 days). https://urlhaus.abuse.ch/downloads/csv_recent/
+Threatmon known C2 (top 50 per day. Limited since free). https://github.com/ThreatMon/ThreatMon-Daily-C2-Feeds/blob/main/2023-11/ThreatMon-C2-Feed-2023-11-26.txt
+
+for CVE 24hr rollup and lookup feature: https://nvd.nist.gov/developers/vulnerabilities
