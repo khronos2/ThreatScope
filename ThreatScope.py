@@ -48,7 +48,33 @@ def fetch_recent_cves_with_nvdlib():
 
     return cve_list
 
-def generate_html(ssl_blacklist, cve_data):
+def fetch_recent_malware_urls():
+    url = "https://urlhaus.abuse.ch/downloads/csv_recent/"
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+
+        data = StringIO(response.text)
+        headers = None
+
+        while True:
+            line = data.readline()
+
+            if 'id,dateadded,url,url_status,last_online,threat,tags,urlhaus_link,reporter' in line:
+                headers = line.strip('# \r\n').split(',')
+                break
+
+        csv_reader = csv.DictReader(data, fieldnames=headers)
+
+        blacklist = [row for row in csv_reader if row]
+        return blacklist
+
+    except requests.RequestException as e:
+        print(f"Error fetching data: {e}.")
+        return []
+
+def generate_html(ssl_blacklist, cve_data, recent_malware):
     
     html_template = """
     <!DOCTYPE html>
@@ -75,6 +101,7 @@ def generate_html(ssl_blacklist, cve_data):
                 box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
                 position: relative;
                 transition: all 0.3s ease;
+                overflow-x: auto;
             }
             .drawer:hover {
                 background-color: #003d82;
@@ -102,11 +129,17 @@ def generate_html(ssl_blacklist, cve_data):
                 width: 100%;
                 border-collapse: collapse;
                 margin-top: 10px;
+                white-space: nowrap;
             }
             th, td {
                 border: 1px solid #ddd;
                 padding: 12px;
                 text-align: left;
+                max-width: 120px;
+                white-space: normal;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                word-wrap: break-word;
             }
             th {
                 background-color: #e9ecef;
@@ -169,12 +202,42 @@ def generate_html(ssl_blacklist, cve_data):
                 {% endfor %}
             </table>
         </div>
+
+        <div id="drawer-malware" class="drawer" onclick="toggleVisibility('content-malware', 'drawer-malware')">Recent Malware URLs (30 Days)</div>
+        <div id="content-malware" class="content">
+            <table>
+                <tr>
+                    <th>ID</th>
+                    <th>Date Added</th>
+                    <th>URL</th>
+                    <th>URL Status</th>
+                    <th>Last Online</th>
+                    <th>Threat</th>
+                    <th>Tags</th>
+                    <th>URLHaus Link</th>
+                    <th>Reporter</th>
+                </tr>
+                {% for item in recent_malware %}
+                <tr>
+                    <td>{{ item['id'] }}</td>
+                    <td>{{ item['dateadded'] }}</td>
+                    <td>{{ item['url'] }}</td>
+                    <td>{{ item['url_status'] }}</td>
+                    <td>{{ item['last_online'] }}</td>
+                    <td>{{ item['threat'] }}</td>
+                    <td>{{ item['tags'] }}</td>
+                    <td>{{ item['urlhaus_link'] }}</td>
+                    <td>{{ item['reporter'] }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
     </body>
     </html>
     """
 
     template = Template(html_template)
-    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data)
+    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data, recent_malware=recent_malware)
 
     with open("threat_intelligence_report.html", "w") as file:
         file.write(html_content)
@@ -183,7 +246,7 @@ def generate_html(ssl_blacklist, cve_data):
 
 
 def main():
-    generate_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib())
+    generate_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib(), fetch_recent_malware_urls())
 
 if __name__ == "__main__":
     main()
