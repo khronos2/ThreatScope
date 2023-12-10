@@ -25,8 +25,18 @@ def fetch_ssl_blacklist():
                 break
 
         csv_reader = csv.DictReader(data, fieldnames=headers)
+        seven_days_ago = datetime.now() - timedelta(days=7)
+        blacklist = []
 
-        blacklist = [row for row in csv_reader if row]
+        for row in csv_reader:
+            if row:
+                try:
+                    first_seen_datetime = datetime.strptime(row['Firstseen'], "%Y-%m-%d %H:%M:%S")
+                    if first_seen_datetime.date() >= seven_days_ago.date():
+                        blacklist.append(row)
+                except ValueError:
+                    continue
+
         return blacklist
 
     except requests.RequestException as e:
@@ -48,7 +58,105 @@ def fetch_recent_cves_with_nvdlib():
 
     return cve_list
 
-def generate_html(ssl_blacklist, cve_data):
+def fetch_recent_malware_urls():
+    url = "https://urlhaus.abuse.ch/downloads/csv_recent/"
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+
+        data = StringIO(response.text)
+        headers = None
+
+        while True:
+            line = data.readline()
+            if 'id,dateadded,url,url_status,last_online,threat,tags,urlhaus_link,reporter' in line:
+                headers = line.strip('# \r\n').split(',')
+                break
+
+        csv_reader = csv.DictReader(data, fieldnames=headers)
+        seven_days_ago = datetime.now() - timedelta(days=7)
+        recent_malware = []
+
+        for row in csv_reader:
+            if row:
+                try:
+                    date_added = datetime.strptime(row['dateadded'], "%Y-%m-%d %H:%M:%S")
+                    if date_added.date() >= seven_days_ago.date():
+                        recent_malware.append(row)
+                except ValueError:
+                    continue
+
+        return recent_malware
+
+    except requests.RequestException as e:
+        print(f"Error fetching data: {e}.")
+        return []
+
+
+def fetch_known_c2():
+    def generate_url(date):
+        year_month = date.strftime("%Y-%m")
+        year_month_day = date.strftime("%Y-%m-%d")
+        return f"https://raw.githubusercontent.com/ThreatMon/ThreatMon-Daily-C2-Feeds/main/{year_month}/ThreatMon-C2-Feed-{year_month_day}.txt"
+
+    current_date = datetime.now()
+
+    url = generate_url(current_date)
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            previous_day = current_date - timedelta(days=1)
+            url = generate_url(previous_day)
+            response = requests.get(url)
+            response.raise_for_status()
+        else:
+            print(f"Error fetching data: {e}.")
+            return []
+
+    data = StringIO(response.text)
+    c2_list = [row.strip() for row in data if row.strip()]
+    return c2_list
+
+def fetch_cisa_known_exploits():
+    url = "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv"
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+
+        data = StringIO(response.text)
+        headers = None
+
+        while True:
+            line = data.readline()
+            if 'cveID,vendorProject,product,vulnerabilityName,dateAdded,shortDescription,requiredAction,dueDate,knownRansomwareCampaignUse,notes' in line:
+                headers = line.strip('# \r\n').split(',')
+                break
+
+        csv_reader = csv.DictReader(data, fieldnames=headers)
+        seven_days_ago = datetime.now() - timedelta(days=7)
+        cisa_known_exploits = []
+
+        for row in csv_reader:
+            if row:
+                try:
+                    date_added = datetime.strptime(row['dateAdded'], "%Y-%m-%d")
+                    if date_added.date() >= seven_days_ago.date():
+                        cisa_known_exploits.append(row)
+                except ValueError:
+                    continue
+
+        return cisa_known_exploits
+
+    except requests.RequestException as e:
+        print(f"Error fetching data: {e}.")
+        return []
+
+def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_exploits):
     
     html_template = """
     <!DOCTYPE html>
@@ -75,6 +183,7 @@ def generate_html(ssl_blacklist, cve_data):
                 box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
                 position: relative;
                 transition: all 0.3s ease;
+                overflow-x: auto;
             }
             .drawer:hover {
                 background-color: #003d82;
@@ -102,11 +211,17 @@ def generate_html(ssl_blacklist, cve_data):
                 width: 100%;
                 border-collapse: collapse;
                 margin-top: 10px;
+                white-space: nowrap;
             }
             th, td {
                 border: 1px solid #ddd;
                 padding: 12px;
                 text-align: left;
+                max-width: 120px;
+                white-space: normal;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                word-wrap: break-word;
             }
             th {
                 background-color: #e9ecef;
@@ -134,7 +249,7 @@ def generate_html(ssl_blacklist, cve_data):
         </script>
     </head>
     <body>
-        <div id="drawer-ssl" class="drawer" onclick="toggleVisibility('content-ssl', 'drawer-ssl')">SSL Blacklist</div>
+        <div id="drawer-ssl" class="drawer" onclick="toggleVisibility('content-ssl', 'drawer-ssl')">SSL Blacklist (7 Days)</div>
         <div id="content-ssl" class="content">
             <table>
                 <tr>
@@ -152,7 +267,7 @@ def generate_html(ssl_blacklist, cve_data):
             </table>
         </div>
 
-        <div id="drawer-cve" class="drawer" onclick="toggleVisibility('content-cve', 'drawer-cve')">CVE Report</div>
+        <div id="drawer-cve" class="drawer" onclick="toggleVisibility('content-cve', 'drawer-cve')">CVE Report (24 Hours)</div>
         <div id="content-cve" class="content">
             <table>
                 <tr>
@@ -163,8 +278,84 @@ def generate_html(ssl_blacklist, cve_data):
                 {% for cve_id, description, cve_url in cve_data %}
                 <tr>
                     <td>{{ cve_id }}</td>
-                    <td>{{ description }}</td>
+                    <td>{{ description | escape}}</td>
                     <td><a href="{{ cve_url }}" target="_blank">{{ cve_url }}</a></td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <div id="drawer-malware" class="drawer" onclick="toggleVisibility('content-malware', 'drawer-malware')">Recent Malware URLs (7 Days)</div>
+        <div id="content-malware" class="content">
+            <table>
+                <tr>
+                    <th>ID</th>
+                    <th>Date Added</th>
+                    <th>URL</th>
+                    <th>URL Status</th>
+                    <th>Last Online</th>
+                    <th>Threat</th>
+                    <th>Tags</th>
+                    <th>URLHaus Link</th>
+                    <th>Reporter</th>
+                </tr>
+                {% for item in recent_malware %}
+                <tr>
+                    <td>{{ item['id'] }}</td>
+                    <td>{{ item['dateadded'] }}</td>
+                    <td>{{ item['url'] }}</td>
+                    <td>{{ item['url_status'] }}</td>
+                    <td>{{ item['last_online'] }}</td>
+                    <td>{{ item['threat'] }}</td>
+                    <td>{{ item['tags'] }}</td>
+                    <td>{{ item['urlhaus_link'] }}</td>
+                    <td>{{ item['reporter'] }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <div id="drawer-c2" class="drawer" onclick="toggleVisibility('content-c2', 'drawer-c2')">Threatmon Known C2 (24 Hours)</div>
+        <div id="content-c2" class="content">
+            <table>
+                <tr>
+                    <th>C2</th>
+                </tr>
+                {% for c2 in known_c2 %}
+                <tr>
+                    <td>{{ c2}}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <div id="drawer-exploits" class="drawer" onclick="toggleVisibility('content-exploits', 'drawer-exploits')">CISA Known Exploits (7 Days)</div>
+        <div id="content-exploits" class="content">
+            <table>
+                <tr>
+                    <th>CVE ID</th>
+                    <th>Vendor/th>
+                    <th>Product</th>
+                    <th>Vulnerability Name</th>
+                    <th>Date Added</th>
+                    <th>Description</th>
+                    <th>Required Action</th>
+                    <th>Due Date</th>
+                    <th>Known Ransomware Campaign Usage</th>
+                    <th>Notes</th>
+                </tr>
+                {% for item in cisa_known_exploits %}
+                <tr>
+                    <td>{{ item['cveID'] }}</td>
+                    <td>{{ item['vendorProject'] }}</td>
+                    <td>{{ item['product'] }}</td>
+                    <td>{{ item['vulnerabilityName'] }}</td>
+                    <td>{{ item['dateAdded'] }}</td>
+                    <td>{{ item['shortDescription'] }}</td>
+                    <td>{{ item['requiredAction'] }}</td>
+                    <td>{{ item['dueDate'] }}</td>
+                    <td>{{ item['knownRansomwareCampaignUse'] }}</td>
+                    <td>{{ item['notes'] }}</td>
                 </tr>
                 {% endfor %}
             </table>
@@ -174,7 +365,7 @@ def generate_html(ssl_blacklist, cve_data):
     """
 
     template = Template(html_template)
-    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data)
+    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data, recent_malware=recent_malware, known_c2=known_c2, cisa_known_exploits=cisa_known_exploits)
 
     with open("threat_intelligence_report.html", "w") as file:
         file.write(html_content)
@@ -183,7 +374,7 @@ def generate_html(ssl_blacklist, cve_data):
 
 
 def main():
-    generate_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib())
+    generate_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib(), fetch_recent_malware_urls(), fetch_known_c2(), fetch_cisa_known_exploits())
 
 if __name__ == "__main__":
     main()
