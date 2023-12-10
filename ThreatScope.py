@@ -74,7 +74,34 @@ def fetch_recent_malware_urls():
         print(f"Error fetching data: {e}.")
         return []
 
-def generate_html(ssl_blacklist, cve_data, recent_malware):
+def fetch_known_c2():
+    def generate_url(date):
+        year_month = date.strftime("%Y-%m")
+        year_month_day = date.strftime("%Y-%m-%d")
+        return f"https://raw.githubusercontent.com/ThreatMon/ThreatMon-Daily-C2-Feeds/main/{year_month}/ThreatMon-C2-Feed-{year_month_day}.txt"
+
+    current_date = datetime.now()
+
+    url = generate_url(current_date)
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            previous_day = current_date - timedelta(days=1)
+            url = generate_url(previous_day)
+            response = requests.get(url)
+            response.raise_for_status()
+        else:
+            print(f"Error fetching data: {e}.")
+            return []
+
+    data = StringIO(response.text)
+    c2_list = [row.strip() for row in data if row.strip()]
+    return c2_list
+
+def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2):
     
     html_template = """
     <!DOCTYPE html>
@@ -196,7 +223,7 @@ def generate_html(ssl_blacklist, cve_data, recent_malware):
                 {% for cve_id, description, cve_url in cve_data %}
                 <tr>
                     <td>{{ cve_id }}</td>
-                    <td>{{ description }}</td>
+                    <td>{{ description | escape}}</td>
                     <td><a href="{{ cve_url }}" target="_blank">{{ cve_url }}</a></td>
                 </tr>
                 {% endfor %}
@@ -232,12 +259,26 @@ def generate_html(ssl_blacklist, cve_data, recent_malware):
                 {% endfor %}
             </table>
         </div>
+
+        <div id="drawer-c2" class="drawer" onclick="toggleVisibility('content-c2', 'drawer-c2')">Threatmon Known C2</div>
+        <div id="content-c2" class="content">
+            <table>
+                <tr>
+                    <th>C2</th>
+                </tr>
+                {% for c2 in known_c2 %}
+                <tr>
+                    <td>{{ c2}}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
     </body>
     </html>
     """
 
     template = Template(html_template)
-    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data, recent_malware=recent_malware)
+    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data, recent_malware=recent_malware, known_c2=known_c2)
 
     with open("threat_intelligence_report.html", "w") as file:
         file.write(html_content)
@@ -246,7 +287,7 @@ def generate_html(ssl_blacklist, cve_data, recent_malware):
 
 
 def main():
-    generate_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib(), fetch_recent_malware_urls())
+    generate_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib(), fetch_recent_malware_urls(),fetch_known_c2())
 
 if __name__ == "__main__":
     main()
