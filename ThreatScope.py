@@ -233,6 +233,13 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
             a:hover {
                 text-decoration: underline;
             }
+            input[type="text"] {
+                width: 220px;
+                padding: 8px;
+                margin-bottom: 10px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
         </style>
         <script>
             function toggleVisibility(id, drawerId) {
@@ -246,12 +253,29 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
                     drawer.classList.add('open');
                 }
             }
+
+            function filterTable(event) {
+                var filter = event.target.value.toUpperCase();
+                var rows = document.querySelector("#" + event.target.getAttribute("data-table") + " tbody").rows;
+
+                for (var i = 1; i < rows.length; i++) {
+                    var containsText = false;
+                    for (var j = 0; j < rows[i].cells.length; j++){
+                        if (rows[i].cells[j].textContent.toUpperCase().indexOf(filter) > -1) {
+                            containsText = true;
+                            break;
+                        }
+                    }
+                    rows[i].style.display = containsText ? "" : "none";
+                }
+            }
         </script>
     </head>
     <body>
         <div id="drawer-ssl" class="drawer" onclick="toggleVisibility('content-ssl', 'drawer-ssl')">SSL Blacklist (7 Days)</div>
         <div id="content-ssl" class="content">
-            <table>
+            <input type="text" onkeyup="filterTable(event)" placeholder="Filter SSL Blacklist..." data-table="sslTable">
+            <table id="sslTable">
                 <tr>
                     <th>First Seen</th>
                     <th>Destination IP</th>
@@ -269,7 +293,8 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
 
         <div id="drawer-cve" class="drawer" onclick="toggleVisibility('content-cve', 'drawer-cve')">CVE Report (24 Hours)</div>
         <div id="content-cve" class="content">
-            <table>
+            <input type="text" onkeyup="filterTable(event)" placeholder="Search for CVEs..." data-table="cveTable">
+            <table id="cveTable">
                 <tr>
                     <th>Title</th>
                     <th>Description</th>
@@ -287,7 +312,8 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
 
         <div id="drawer-malware" class="drawer" onclick="toggleVisibility('content-malware', 'drawer-malware')">Recent Malware URLs (7 Days)</div>
         <div id="content-malware" class="content">
-            <table>
+            <input type="text" onkeyup="filterTable(event)" placeholder="Search for Recent Malware URLs..." data-table="malwareTable">
+            <table id="malwareTable">
                 <tr>
                     <th>ID</th>
                     <th>Date Added</th>
@@ -317,7 +343,8 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
 
         <div id="drawer-c2" class="drawer" onclick="toggleVisibility('content-c2', 'drawer-c2')">Threatmon Known C2 (24 Hours)</div>
         <div id="content-c2" class="content">
-            <table>
+            <input type="text" onkeyup="filterTable(event)" placeholder="Search for Known C2 Nodes..." data-table="c2Table">
+            <table id="c2Table">
                 <tr>
                     <th>C2</th>
                 </tr>
@@ -331,7 +358,8 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
 
         <div id="drawer-exploits" class="drawer" onclick="toggleVisibility('content-exploits', 'drawer-exploits')">CISA Known Exploits (7 Days)</div>
         <div id="content-exploits" class="content">
-            <table>
+            <input type="text" onkeyup="filterTable(event)" placeholder="Search for CISA Known Exploits..." data-table="cisaTable">
+            <table id="cisaTable">
                 <tr>
                     <th>CVE ID</th>
                     <th>Vendor/th>
