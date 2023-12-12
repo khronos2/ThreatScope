@@ -47,7 +47,11 @@ def fetch_recent_cves_with_nvdlib():
     end_date = datetime.now()
     start_date = end_date - timedelta(days=1)
 
-    cves = nvdlib.searchCVE(pubStartDate=start_date, pubEndDate=end_date)
+    try:
+        cves = nvdlib.searchCVE(pubStartDate=start_date, pubEndDate=end_date)
+    except ConnectionError as e:
+        if 'Max retries exceeded' in str(e) and 'Failed to establish a new connection' in str(e):
+            print("Rate limit on NVD Database likely exceeded. Please wait 1 minute and try to run the script again")
 
     cve_list = []
     for cve in cves:
@@ -157,7 +161,8 @@ def fetch_cisa_known_exploits():
         return []
 
 def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_exploits):
-    
+    current_date = datetime.now().strftime("%m-%d-%Y")
+
     html_template = """
     <!DOCTYPE html>
     <html>
@@ -171,6 +176,14 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
                 background-color: #f4f4f4;
                 padding: 20px;
                 margin: 0;
+            }
+            header {
+                background-color: #008080;
+                color: white;
+                text-align: center;
+                padding: 10px 0;
+                font-size: 24px;
+                border-bottom: 3px solid #008085;
             }
             .drawer {
                 cursor: pointer;
@@ -272,6 +285,10 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
         </script>
     </head>
     <body>
+        <header>
+            ThreatScope Generated Report for {{ current_date }}
+        </header>
+
         <div id="drawer-ssl" class="drawer" onclick="toggleVisibility('content-ssl', 'drawer-ssl')">SSL Blacklist (7 Days)</div>
         <div id="content-ssl" class="content">
             <input type="text" onkeyup="filterTable(event)" placeholder="Filter SSL Blacklist..." data-table="sslTable">
@@ -393,7 +410,7 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
     """
 
     template = Template(html_template)
-    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data, recent_malware=recent_malware, known_c2=known_c2, cisa_known_exploits=cisa_known_exploits)
+    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data, recent_malware=recent_malware, known_c2=known_c2, cisa_known_exploits=cisa_known_exploits, current_date=current_date)
 
     with open("threat_intelligence_report.html", "w") as file:
         file.write(html_content)
