@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import requests
 from io import StringIO
 import csv
@@ -162,7 +160,7 @@ def fetch_cisa_known_exploits():
 
 def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_exploits):
     current_date = datetime.now().strftime("%m-%d-%Y")
-
+    report_name = "threat_intelligence_report_" + current_date + ".html"
     html_template = """
     <!DOCTYPE html>
     <html>
@@ -412,10 +410,10 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
     template = Template(html_template)
     html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data, recent_malware=recent_malware, known_c2=known_c2, cisa_known_exploits=cisa_known_exploits, current_date=current_date)
 
-    with open("threat_intelligence_report.html", "w") as file:
+    with open(report_name, "w") as file:
         file.write(html_content)
 
-    print("Threat Intelligence Report has been generated!: threat_intelligence_report.html")
+    print(f"Threat Intelligence Report has been generated!: {report_name}")
 
 
 def main():
