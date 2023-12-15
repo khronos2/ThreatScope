@@ -6,6 +6,7 @@ import nvdlib
 from datetime import datetime, timedelta
 
 def fetch_ssl_blacklist():
+    print("Fetching SSL blacklist...")
     url = "https://sslbl.abuse.ch/blacklist/sslipblacklist_aggressive.csv"
 
     try:
@@ -42,6 +43,7 @@ def fetch_ssl_blacklist():
         return []
 
 def fetch_recent_cves_with_nvdlib():
+    print("Fetching recent CVEs...")
     end_date = datetime.now()
     start_date = end_date - timedelta(days=1)
 
@@ -61,6 +63,7 @@ def fetch_recent_cves_with_nvdlib():
     return cve_list
 
 def fetch_recent_malware_urls():
+    print("Fetching recent malware URLs...")
     url = "https://urlhaus.abuse.ch/downloads/csv_recent/"
 
     try:
@@ -97,6 +100,7 @@ def fetch_recent_malware_urls():
 
 
 def fetch_known_c2():
+    print("Fetching known C2 addresses...")
     def generate_url(date):
         year_month = date.strftime("%Y-%m")
         year_month_day = date.strftime("%Y-%m-%d")
@@ -124,6 +128,7 @@ def fetch_known_c2():
     return c2_list
 
 def fetch_ip_blocklist():
+    print("Fetching IP blocklist...")
     url = "https://lists.blocklist.de/lists/all.txt"
 
     try:
@@ -138,6 +143,7 @@ def fetch_ip_blocklist():
     return ip_list
 
 def fetch_cisa_known_exploits():
+    print("Fetching CISA Known Exploits...")
     url = "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv"
 
     try:
@@ -173,6 +179,7 @@ def fetch_cisa_known_exploits():
         return []
 
 def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_exploits, ip_blocklist):
+    print("Generating HTML report...")
     current_date = datetime.now().strftime("%m-%d-%Y")
     report_name = "threat_intelligence_report_" + current_date + ".html"
     html_template = """
