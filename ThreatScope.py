@@ -123,6 +123,20 @@ def fetch_known_c2():
     c2_list = [row.strip() for row in data if row.strip()]
     return c2_list
 
+def fetch_ip_blocklist():
+    url = "https://lists.blocklist.de/lists/all.txt"
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"Error fetching data: {e}.")
+        return []
+
+    data = StringIO(response.text)
+    ip_list = [row.strip() for row in data if row.strip()]
+    return ip_list
+
 def fetch_cisa_known_exploits():
     url = "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv"
 
@@ -158,7 +172,7 @@ def fetch_cisa_known_exploits():
         print(f"Error fetching data: {e}.")
         return []
 
-def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_exploits):
+def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_exploits, ip_blocklist):
     current_date = datetime.now().strftime("%m-%d-%Y")
     report_name = "threat_intelligence_report_" + current_date + ".html"
     html_template = """
@@ -403,12 +417,27 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
                 {% endfor %}
             </table>
         </div>
+
+        <div id="drawer-ip" class="drawer" onclick="toggleVisibility('content-ip', 'drawer-ip')">Blocklist.de IP Blocklist</div>
+        <div id="content-ip" class="content">
+            <input type="text" onkeyup="filterTable(event)" placeholder="Search for Blocked IPs..." data-table="ipTable">
+            <table id="ipTable">
+                <tr>
+                    <th>IP</th>
+                </tr>
+                {% for ip in ip_blocklist %}
+                <tr>
+                    <td>{{ ip }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
     </body>
     </html>
     """
 
     template = Template(html_template)
-    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data, recent_malware=recent_malware, known_c2=known_c2, cisa_known_exploits=cisa_known_exploits, current_date=current_date)
+    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data, recent_malware=recent_malware, known_c2=known_c2, cisa_known_exploits=cisa_known_exploits, ip_blocklist=ip_blocklist, current_date=current_date)
 
     with open(report_name, "w") as file:
         file.write(html_content)
@@ -417,7 +446,7 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
 
 
 def main():
-    generate_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib(), fetch_recent_malware_urls(), fetch_known_c2(), fetch_cisa_known_exploits())
+    generate_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib(), fetch_recent_malware_urls(), fetch_known_c2(), fetch_cisa_known_exploits(), fetch_ip_blocklist())
 
 if __name__ == "__main__":
     main()
