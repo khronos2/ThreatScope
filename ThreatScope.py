@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import requests
 from io import StringIO
 import csv
@@ -8,6 +6,7 @@ import nvdlib
 from datetime import datetime, timedelta
 
 def fetch_ssl_blacklist():
+    print("Fetching SSL blacklist...")
     url = "https://sslbl.abuse.ch/blacklist/sslipblacklist_aggressive.csv"
 
     try:
@@ -44,10 +43,15 @@ def fetch_ssl_blacklist():
         return []
 
 def fetch_recent_cves_with_nvdlib():
+    print("Fetching recent CVEs...")
     end_date = datetime.now()
     start_date = end_date - timedelta(days=1)
 
-    cves = nvdlib.searchCVE(pubStartDate=start_date, pubEndDate=end_date)
+    try:
+        cves = nvdlib.searchCVE(pubStartDate=start_date, pubEndDate=end_date)
+    except ConnectionError as e:
+        if 'Max retries exceeded' in str(e) and 'Failed to establish a new connection' in str(e):
+            print("Rate limit on NVD Database likely exceeded. Please wait 1 minute and try to run the script again")
 
     cve_list = []
     for cve in cves:
@@ -59,6 +63,7 @@ def fetch_recent_cves_with_nvdlib():
     return cve_list
 
 def fetch_recent_malware_urls():
+    print("Fetching recent malware URLs...")
     url = "https://urlhaus.abuse.ch/downloads/csv_recent/"
 
     try:
@@ -95,6 +100,7 @@ def fetch_recent_malware_urls():
 
 
 def fetch_known_c2():
+    print("Fetching known C2 addresses...")
     def generate_url(date):
         year_month = date.strftime("%Y-%m")
         year_month_day = date.strftime("%Y-%m-%d")
@@ -121,7 +127,23 @@ def fetch_known_c2():
     c2_list = [row.strip() for row in data if row.strip()]
     return c2_list
 
+def fetch_ip_blocklist():
+    print("Fetching IP blocklist...")
+    url = "https://lists.blocklist.de/lists/all.txt"
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"Error fetching data: {e}.")
+        return []
+
+    data = StringIO(response.text)
+    ip_list = [row.strip() for row in data if row.strip()]
+    return ip_list
+
 def fetch_cisa_known_exploits():
+    print("Fetching CISA Known Exploits...")
     url = "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv"
 
     try:
@@ -156,8 +178,10 @@ def fetch_cisa_known_exploits():
         print(f"Error fetching data: {e}.")
         return []
 
-def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_exploits):
-    
+def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_exploits, ip_blocklist):
+    print("Generating HTML report...")
+    current_date = datetime.now().strftime("%m-%d-%Y")
+    report_name = "threat_intelligence_report_" + current_date + ".html"
     html_template = """
     <!DOCTYPE html>
     <html>
@@ -171,6 +195,14 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
                 background-color: #f4f4f4;
                 padding: 20px;
                 margin: 0;
+            }
+            header {
+                background-color: #008080;
+                color: white;
+                text-align: center;
+                padding: 10px 0;
+                font-size: 24px;
+                border-bottom: 3px solid #008085;
             }
             .drawer {
                 cursor: pointer;
@@ -233,6 +265,13 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
             a:hover {
                 text-decoration: underline;
             }
+            input[type="text"] {
+                width: 220px;
+                padding: 8px;
+                margin-bottom: 10px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
         </style>
         <script>
             function toggleVisibility(id, drawerId) {
@@ -246,12 +285,33 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
                     drawer.classList.add('open');
                 }
             }
+
+            function filterTable(event) {
+                var filter = event.target.value.toUpperCase();
+                var rows = document.querySelector("#" + event.target.getAttribute("data-table") + " tbody").rows;
+
+                for (var i = 1; i < rows.length; i++) {
+                    var containsText = false;
+                    for (var j = 0; j < rows[i].cells.length; j++){
+                        if (rows[i].cells[j].textContent.toUpperCase().indexOf(filter) > -1) {
+                            containsText = true;
+                            break;
+                        }
+                    }
+                    rows[i].style.display = containsText ? "" : "none";
+                }
+            }
         </script>
     </head>
     <body>
+        <header>
+            ThreatScope Generated Report for {{ current_date }}
+        </header>
+
         <div id="drawer-ssl" class="drawer" onclick="toggleVisibility('content-ssl', 'drawer-ssl')">SSL Blacklist (7 Days)</div>
         <div id="content-ssl" class="content">
-            <table>
+            <input type="text" onkeyup="filterTable(event)" placeholder="Filter SSL Blacklist..." data-table="sslTable">
+            <table id="sslTable">
                 <tr>
                     <th>First Seen</th>
                     <th>Destination IP</th>
@@ -269,7 +329,8 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
 
         <div id="drawer-cve" class="drawer" onclick="toggleVisibility('content-cve', 'drawer-cve')">CVE Report (24 Hours)</div>
         <div id="content-cve" class="content">
-            <table>
+            <input type="text" onkeyup="filterTable(event)" placeholder="Search for CVEs..." data-table="cveTable">
+            <table id="cveTable">
                 <tr>
                     <th>Title</th>
                     <th>Description</th>
@@ -287,7 +348,8 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
 
         <div id="drawer-malware" class="drawer" onclick="toggleVisibility('content-malware', 'drawer-malware')">Recent Malware URLs (7 Days)</div>
         <div id="content-malware" class="content">
-            <table>
+            <input type="text" onkeyup="filterTable(event)" placeholder="Search for Recent Malware URLs..." data-table="malwareTable">
+            <table id="malwareTable">
                 <tr>
                     <th>ID</th>
                     <th>Date Added</th>
@@ -317,7 +379,8 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
 
         <div id="drawer-c2" class="drawer" onclick="toggleVisibility('content-c2', 'drawer-c2')">Threatmon Known C2 (24 Hours)</div>
         <div id="content-c2" class="content">
-            <table>
+            <input type="text" onkeyup="filterTable(event)" placeholder="Search for Known C2 Nodes..." data-table="c2Table">
+            <table id="c2Table">
                 <tr>
                     <th>C2</th>
                 </tr>
@@ -331,7 +394,8 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
 
         <div id="drawer-exploits" class="drawer" onclick="toggleVisibility('content-exploits', 'drawer-exploits')">CISA Known Exploits (7 Days)</div>
         <div id="content-exploits" class="content">
-            <table>
+            <input type="text" onkeyup="filterTable(event)" placeholder="Search for CISA Known Exploits..." data-table="cisaTable">
+            <table id="cisaTable">
                 <tr>
                     <th>CVE ID</th>
                     <th>Vendor/th>
@@ -360,21 +424,36 @@ def generate_html(ssl_blacklist, cve_data, recent_malware, known_c2, cisa_known_
                 {% endfor %}
             </table>
         </div>
+
+        <div id="drawer-ip" class="drawer" onclick="toggleVisibility('content-ip', 'drawer-ip')">Blocklist.de IP Blocklist</div>
+        <div id="content-ip" class="content">
+            <input type="text" onkeyup="filterTable(event)" placeholder="Search for Blocked IPs..." data-table="ipTable">
+            <table id="ipTable">
+                <tr>
+                    <th>IP</th>
+                </tr>
+                {% for ip in ip_blocklist %}
+                <tr>
+                    <td>{{ ip }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
     </body>
     </html>
     """
 
     template = Template(html_template)
-    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data, recent_malware=recent_malware, known_c2=known_c2, cisa_known_exploits=cisa_known_exploits)
+    html_content = template.render(ssl_blacklist=ssl_blacklist, cve_data=cve_data, recent_malware=recent_malware, known_c2=known_c2, cisa_known_exploits=cisa_known_exploits, ip_blocklist=ip_blocklist, current_date=current_date)
 
-    with open("threat_intelligence_report.html", "w") as file:
+    with open(report_name, "w") as file:
         file.write(html_content)
 
-    print("Threat Intelligence Report has been generated!: threat_intelligence_report.html")
+    print(f"Threat Intelligence Report has been generated!: {report_name}")
 
 
 def main():
-    generate_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib(), fetch_recent_malware_urls(), fetch_known_c2(), fetch_cisa_known_exploits())
+    generate_html(fetch_ssl_blacklist(), fetch_recent_cves_with_nvdlib(), fetch_recent_malware_urls(), fetch_known_c2(), fetch_cisa_known_exploits(), fetch_ip_blocklist())
 
 if __name__ == "__main__":
     main()
